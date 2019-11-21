@@ -14,6 +14,12 @@ module Permissions where
 
 type BasePermissions = Bool
 
+data T a where
+  T1 : T Int
+  T2 : T a -> Bool
+  
+deriving instance Show (T a)
+
 template Permissions
   with
     owner : Party
@@ -37,8 +43,9 @@ test_permissions = scenario do
   let auth owner = do 
     if owner == alice
   
+  -- let perm = auth bob
   -- let base = BasePermissions with authorization = auth
   submit alice do
     create Permissions with
       owner = alice
-      permissions auth bob
+      permissions = auth bob
