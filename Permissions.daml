@@ -32,11 +32,13 @@ template Permissions
 test_permissions = scenario do
 
   alice <- getParty "Alice"
-  auth <- do
-    return True
+  bob <- getParty "Bob"
+
+  let auth owner = do 
+    if owner == alice
   
   -- let base = BasePermissions with authorization = auth
   submit alice do
     create Permissions with
       owner = alice
-      permissions = auth
+      permissions auth bob
