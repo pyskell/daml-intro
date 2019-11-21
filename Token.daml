@@ -1,0 +1,47 @@
+-- MAYBE JOIN SLACK CHANNEL
+
+daml 1.2
+module Token where
+
+-- How does one define multiple owners? [Party] doesn't seem to work
+template Token
+  with
+    owner : Party
+  where
+    signatory owner    
+
+create_token = scenario do
+  alice <- getParty "Alice"
+  submit alice do
+    create Token with owner = alice
+
+wrong_owner = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  submitMustFail alice do
+    create Token with owner = bob
+  
+  submitMustFail bob do
+    create Token with owner = alice
+
+-- Are there fixtures or setup/teardown functions for daml tests?
+
+cant_archive = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  alice_token <- submit alice do
+    create Token with owner = alice
+  
+  submitMustFail bob do 
+    archive alice_token
+
+can_archive = scenario do
+  alice <- getParty "Alice"
+
+  alice_token <- submit alice do
+    create Token with owner = alice
+
+  submit alice do
+    archive alice_token

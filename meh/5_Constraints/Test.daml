@@ -1,0 +1,29 @@
+daml 1.2
+
+module Test where
+
+template SimpleIou
+  with
+    owner : Party
+    issuer : Party
+  where
+    signatory issuer
+
+    controller owner can
+      Transfer : ContractId SimpleIou
+        with newOwner : Party
+        do
+          create this with owner = newOwner
+
+test_transfer = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  iou <- submit alice do
+    create SimpleIou with
+      issuer = alice
+      owner = alice
+
+  submit alice do
+    exercise iou Transfer with newOwner = bob
+    

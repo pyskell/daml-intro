@@ -1,0 +1,58 @@
+daml 1.2
+
+module Constraints where
+-- Lesson 5 is missing this import
+import DA.Text as T
+
+data Cash = Cash 
+  with
+    currency : Text
+    amount : Decimal
+      deriving(Eq, Show)
+    
+
+template SimpleIou
+  with
+    issuer : Party
+    owner : Party
+    cash : Cash
+  
+  where 
+    signatory issuer
+    ensure cash.amount > 0.0
+      && T.length cash.currency == 3
+      && T.isUpper cash.currency
+      && issuer /= owner
+          
+
+test_restrictions = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+  dora <- getParty "Dora"
+
+  -- No negative IOUs
+  submitMustFail dora do
+    create SimpleIou with
+      issuer = dora
+      owner = alice
+      cash = Cash with
+        currency = "USD"
+        amount = -100.0
+
+  -- No zero balance
+  submitMustFail dora do
+    create SimpleIou with
+      issuer = dora
+      owner = bob
+      cash = Cash with
+        currency = "USD"
+        amount = 0.0
+
+  -- Owner and Issuer must be different (cannot owe self)
+  submitMustFail dora do
+    create SimpleIou with
+      issuer = dora
+      owner = dora
+      cash = Cash with
+        currency = "USD"
+        amount = 1.0

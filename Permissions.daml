@@ -1,0 +1,42 @@
+daml 1.2
+
+module Permissions where
+
+-- data BasePermissions = Function
+--   deriving(Eq, Show)
+
+
+-- data BasePermissions a = BasePermissions (a -> Bool)
+
+-- data BasePermissions = BasePermissions{
+--     authorization : Bool
+-- } deriving (Eq, Show)
+
+type BasePermissions = Bool
+
+template Permissions
+  with
+    owner : Party
+    permissions : BasePermissions
+  where
+    signatory owner
+  
+    controller owner can
+      SetPermissions : ContractId Permissions
+        with
+          newPermissions : BasePermissions
+        do
+          create this with permissions = newPermissions
+
+
+test_permissions = scenario do
+
+  alice <- getParty "Alice"
+  auth <- do
+    return True
+  
+  -- let base = BasePermissions with authorization = auth
+  submit alice do
+    create Permissions with
+      owner = alice
+      permissions = auth

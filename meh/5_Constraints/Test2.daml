@@ -1,0 +1,21 @@
+daml 1.2
+
+module Test2 where
+import DA.Text as T
+
+-- RESTRICTED_IOU_BEGIN
+template SimpleIou
+  with
+    issuer : Party
+    owner : Party
+  where
+    signatory issuer
+    controller owner can
+      Transfer
+        : ContractId SimpleIou
+        with
+          newOwner : Party
+        do
+          assertMsg "newOwner cannot be equal to owner." (owner /= newOwner)
+          create this with owner = newOwner
+-- TRANSFER_CHOICE_END

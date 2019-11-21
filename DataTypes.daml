@@ -1,0 +1,28 @@
+daml 1.2
+
+module DataTypes where
+
+import DA.Date
+import DA.Time
+-- Would be nice if successful tests gave output like failures do rather than {}
+native_test = scenario do
+  let
+    test_date : Date = date 2020 Jan 01
+    test_date2 = date 2020 Jan 02 : Date
+
+  assert (addDays test_date 1 == date 2020 Jan 02)
+  assert (addDays test_date 1 == test_date2)
+  assert (True /= False)
+
+data KeyValue k v = KeyValue with
+  _key : k
+  _val : v
+    deriving(Eq, Show, Ord)
+
+native_test2 = scenario do
+  let my_kv = KeyValue "key" "value"
+  let my_kv2 = KeyValue "key2" "value2"
+  assert $ my_kv._key == "key"
+  assert $ my_kv /= my_kv2
+  assert $ my_kv < my_kv2
+

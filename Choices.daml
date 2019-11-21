@@ -1,0 +1,58 @@
+daml 1.2
+
+module Choices where
+
+-- If an exercise fails does it still archive the contract?
+-- https://docs.daml.com/daml/reference/base.html is incredibly slow on my computer, the Chrome tab exceed 300MB
+
+template Contact
+  with
+    owner : Party
+    issuer : Party
+    phoneNumber : Text
+  where    
+    controller owner can
+      ChangeOwner : ContractId Contact
+        with newOwner : Party
+          do
+            create this with
+              owner = newOwner
+
+    controller owner can
+      UpdateTelephone : ContractId Contact
+        with newNumber : Text
+          do
+            create this with
+              phoneNumber = newNumber
+
+
+    signatory issuer
+    
+
+update_number = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  contact <- submit alice do
+    create Contact with
+      owner = alice
+      issuer = alice
+      phoneNumber = "222-222-2222"
+  
+  -- submitMustFail alice do
+  --   exercise contact UpdateTelephone with newNumber = "222-222-2222"
+
+  newContact <- submit alice do
+    exercise contact UpdateTelephone with newNumber = "333-333-3333"
+
+  -- newContactCid <- submit bob do
+  --   exercise contact UpdateTelephone with newNumber = "333-333-3333"
+
+  -- submitMustFail alice do
+  --   exercise newContact UpdateTelephone with newNumber = "444-444-4444"
+
+  bobControls <- submit alice do
+    exercise newContact ChangeOwner with newOwner = bob
+  
+  submitMustFail alice do
+    exercise bobControls UpdateTelephone with newNumber = "444-444-4444"

@@ -1,0 +1,30 @@
+daml 1.2
+module MultiPartyToken where
+
+template MultiParty
+  with
+    admin : Party
+    owner : [Party]
+  where
+    signatory admin
+
+create_token = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  let both = [alice, bob]
+
+  submit alice do
+    create MultiParty with admin = alice, owner = [alice, bob]
+
+cant_archive = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  let both = [alice, bob]
+
+  bob_contract <- submit bob do
+    create MultiParty with admin = bob, owner = [alice, bob]
+
+  submitMustFail alice do
+    archive bob_contract
