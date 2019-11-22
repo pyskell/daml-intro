@@ -1,0 +1,6 @@
+daml 1.2
+
+module Parties where
+
+-- DAML extension is causing core dumps in javacore after adding it to visual studio
+-- Needed to disable extension, restart daml studio, and then uninstall the extension to stop it
