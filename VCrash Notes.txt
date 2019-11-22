@@ -1,0 +1,24 @@
+-- DAML extension is causing core dumps in javacore after adding it to visual studio
+-- Needed to disable extension, restart daml studio, and then uninstall the extension to stop it
+-- Simply uninstalling the extension didn't work and it would be active again when daml studio was restarted
+-- This may be related to a broken Java install after upgrading Win 7 -> Win 10 and may not be a DAML bug
+-- It was a version of java that came with IBM SPSS and ended up in my path, should ideally fail more gracefully if possible
+
+-- VS Code:
+-- Version: 1.40.1 (system setup)
+-- Commit: 8795a9889db74563ddd43eb0a897a2384129a619
+-- Date: 2019-11-13T16:49:38.560Z
+-- Electron: 6.1.2
+-- Chrome: 76.0.3809.146
+-- Node.js: 12.4.0
+-- V8: 7.6.303.31-electron.0
+-- OS: Windows_NT ia32 10.0.18363
+
+-- java version "1.8.0"
+-- Java(TM) SE Runtime Environment (build pwa6480sr2fp10-20160108_01(SR2 FP10))
+-- IBM J9 VM (build 2.8, JRE 1.8.0 Windows 10 amd64-64 Compressed References 20160106_284759 (JIT enabled, AOT enabled)
+-- J9VM - R28_20160106_1341_B284759
+-- JIT  - tr.r14.java_20151209_107110.02
+-- GC   - R28_20160106_1341_B284759_CMPRSS
+-- J9CL - 20160106_284759)
+-- JCL - 20151231_01 based on Oracle jdk8u71-b15

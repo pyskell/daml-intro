@@ -2,5 +2,103 @@ daml 1.2
 
 module Parties where
 
--- DAML extension is causing core dumps in javacore after adding it to visual studio
--- Needed to disable extension, restart daml studio, and then uninstall the extension to stop it
+data Cash = Cash with
+  currency : Text
+  amount : Decimal
+    deriving (Eq, Show)
+
+template Iou
+  with
+    issuer : Party
+    owner : Party
+    cash : Cash
+  where
+    signatory issuer, owner
+
+    controller owner can
+      Transfer
+        : ContractId Iou
+        with
+          newOwner : Party
+        do
+          assertMsg "newOwner cannot be current owner" (owner /= newOwner)
+          create this with owner = newOwner
+
+template IouProposal
+  with
+    iou : Iou
+  where
+    signatory iou.issuer
+
+    controller iou.owner can
+      IouProposal_Accept
+        : ContractId Iou
+        do
+          create iou
+
+template IouTransferProposal
+  with
+    iou : Iou
+    newOwner : Party
+  where
+    signatory (signatory iou) -- Gets the signatories of iou and provides them to this template
+
+    controller iou.owner can
+      -- Cancel by creating the iou with its existing properties
+      IouTransferProposal_Cancel
+        : ContractId Iou
+        do
+          create iou
+
+    controller newOwner can
+      -- Reject in the same way as IouTransferProposal_Cancel
+      IouTransferProposal_Reject
+        : ContractId Iou
+        do
+          create iou
+
+      -- Accept by replacing previous Iou with new owner
+      IouTransferProposal_Accept
+        : ContractId Iou
+        do
+          create iou with
+            owner = newOwner
+
+iou_test = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  -- Alice and Bob want to trade, but Alice can't give Bob an Iou without his authority
+  submitMustFail alice do
+    create Iou with
+      issuer = alice
+      owner = bob
+      cash = Cash with
+        amount = 100.0
+        currency = "USD"
+
+  -- She can give herself an Iou
+  iou <- submit alice do
+    create Iou with
+      issuer = alice
+      owner = alice
+      cash = Cash with
+        amount = 100.0
+        currency = "USD"
+
+  -- But she can't send it to Bob because she needs his authorization
+  submitMustFail alice do
+    exercise iou Transfer with
+      newOwner = bob
+  
+  iouProposal <- submit alice do
+    create IouProposal with
+      iou = Iou with
+        issuer = alice
+        owner = bob
+        cash = Cash with
+          amount = 100.0
+          currency = "USD"
+  
+  submit bob do
+    exercise iouProposal IouProposal_Accept
