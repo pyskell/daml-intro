@@ -38,6 +38,15 @@ template Iou
             iou = this
             newOwner
 
+    choice Mutual_Transfer
+      : ContractId Iou
+      with
+        newOwner : Party
+      controller owner, newOwner
+      do
+        create this with
+          owner = newOwner
+
 template IouProposal
   with
     iou : Iou
@@ -78,6 +87,27 @@ template IouTransferProposal
         do
           create iou with
             owner = newOwner
+
+template IouSender
+  with
+    sender : Party
+    receiver : Party
+  where
+    signatory receiver
+  
+    controller sender can
+      -- Keeps this contract from being consumed so it can be reused
+      nonconsuming Send_Iou
+        : ContractId Iou
+        with
+          iouCid : ContractId Iou
+        do
+          iou <- fetch iouCid
+          assertMsg "Cash value must be greater than 0" (iou.cash.amount > 0.0)
+          assertMsg "Sender does not own the Iou being sent" (sender == iou.owner)
+          -- iou is still consumed and replaced with a new contract when the owner changes
+          exercise iouCid Mutual_Transfer with
+            newOwner = receiver
 
 iou_test = scenario do
   alice <- getParty "Alice"
@@ -143,3 +173,30 @@ iou_test = scenario do
   -- Charlie accepts from Bob
   submit charlie do
     exercise tpabc IouTransferProposal_Accept
+
+iou_sender = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  -- Alice creates the Iou
+  iou <- submit alice do
+    create Iou with
+      issuer = alice
+      owner = alice
+      cash = Cash with
+        currency = "USD"
+        amount = 500.0
+
+  -- Bob permits Alice to send him Ious
+  sab <- submit bob do
+    create IouSender with
+      sender = alice
+      receiver = bob
+  
+  -- Alice sends the Iou to Bob, which Bob now owns
+  submit alice do
+    exercise sab Send_Iou with
+      iouCid = iou
+
+
+    

@@ -1,0 +1,3 @@
+On the getting started guide you'll regularly encounter blocks of code where it's not entirely clear where in the code it belongs, example: https://docs.daml.com/daml/intro/6_Parties.html#use-role-contracts-for-ongoing-authorization
+
+Is the text above this right? Seems for TryB that Bob can't exercise TryA because he doesn't have Alice's auth, not because Bob's authority is missing (it technically is missing on TryA, but is that what is meant?) https://docs.daml.com/daml/intro/6_Parties.html#next-up
