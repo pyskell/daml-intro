@@ -24,6 +24,20 @@ template Iou
           assertMsg "newOwner cannot be current owner" (owner /= newOwner)
           create this with owner = newOwner
 
+      -- Let the owner of the iou propose a transfer
+      -- I think we do from within Iou because otherwise the transfer proposal
+      -- won't have the authorization to archive this Iou and create a new one
+      -- when the Iou is transferred to newOwner
+      ProposeTransfer
+        : ContractId IouTransferProposal
+        with
+          newOwner : Party
+        do
+          assertMsg "newOwner cannot be current owner" (owner /= newOwner)
+          create IouTransferProposal with
+            iou = this
+            newOwner
+
 template IouProposal
   with
     iou : Iou
@@ -45,6 +59,7 @@ template IouTransferProposal
 
     controller iou.owner can
       -- Cancel by creating the iou with its existing properties
+      -- Prevents abuse by recipient
       IouTransferProposal_Cancel
         : ContractId Iou
         do
@@ -67,6 +82,7 @@ template IouTransferProposal
 iou_test = scenario do
   alice <- getParty "Alice"
   bob <- getParty "Bob"
+  charlie <- getParty "Charlie"
 
   -- Alice and Bob want to trade, but Alice can't give Bob an Iou without his authority
   submitMustFail alice do
@@ -91,14 +107,39 @@ iou_test = scenario do
     exercise iou Transfer with
       newOwner = bob
   
+  -- Alice creates an Iou proposal to send to Bob
   iouProposal <- submit alice do
     create IouProposal with
       iou = Iou with
         issuer = alice
         owner = bob
         cash = Cash with
-          amount = 100.0
+          amount = 200.0
           currency = "USD"
   
+  -- Bob accepts the transfer
   submit bob do
     exercise iouProposal IouProposal_Accept
+
+  -- Alice makes an Iou to herself with a transfer proposal to Bob
+  tpab <- submit alice do
+    create IouTransferProposal with
+      newOwner = bob
+      iou = Iou with
+        issuer = alice
+        owner = alice
+        cash = Cash with
+          amount = 300.0
+          currency = "USD"
+  
+  -- Bob accepts the Iou transfer
+  iou2 <- submit bob do
+    exercise tpab IouTransferProposal_Accept
+
+  -- Bob offers a transfer to Charlie
+  tpabc <- submit bob do
+    exercise iou2 ProposeTransfer with newOwner = charlie
+
+  -- Charlie accepts from Bob
+  submit charlie do
+    exercise tpabc IouTransferProposal_Accept
