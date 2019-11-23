@@ -3,32 +3,6 @@ daml 1.2
 module Main where
 import DA.Next.Map as M
 
--- -- data BasePermissions = Function
--- --   deriving(Eq, Show)
-
-
--- -- data BasePermissions a = BasePermissions (a -> Bool)
-
--- -- data BasePermissions = BasePermissions{
--- --     authorization : Bool
--- -- } deriving (Eq, Show)
-
--- type BasePermissions = Bool
-
--- template Permissions
---   with
---     owner : Party
---     permissions : BasePermissions
---   where
---     signatory owner
-  
---     controller owner can
---       SetPermissions : ContractId Permissions
---         with
---           newPermissions : BasePermissions
---         do
---           create this with permissions = newPermissions
-
 template Authorization
   with
     owner : Party
@@ -103,23 +77,14 @@ test_auth = scenario do
   submitMustFail alice do
     exercise bad_proposal UserAuthorization_Accept
     
+  -- Alice creates a valid auth proposal
+  auth_proposal <- submit alice do
+    auth <- fetch authCid
+    create AuthorizationProposal with
+      sender = alice
+      receiver = bob
+      authorization = auth
 
-  -- auth_proposal <- submit alice do
-  --   create AuthorizationProposal with
-  --     sender = alice
-  --     receiver = bob
-  --     authorization = auth
-
-    
-
--- test_permissions = scenario do
-
---   alice <- getParty "Alice"
---   auth <- do
---     return True
-  
---   -- let base = BasePermissions with authorization = auth
---   submit alice do
---     create Permissions with
---       owner = alice
---       permissions = auth
+  -- Bob approves it
+  submit bob do
+    exercise auth_proposal UserAuthorization_Accept
