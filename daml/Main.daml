@@ -1,42 +1,81 @@
 daml 1.2
 
-module Permissions where
+module Main where
 
--- data BasePermissions = Function
---   deriving(Eq, Show)
+-- -- data BasePermissions = Function
+-- --   deriving(Eq, Show)
 
 
--- data BasePermissions a = BasePermissions (a -> Bool)
+-- -- data BasePermissions a = BasePermissions (a -> Bool)
 
--- data BasePermissions = BasePermissions{
---     authorization : Bool
--- } deriving (Eq, Show)
+-- -- data BasePermissions = BasePermissions{
+-- --     authorization : Bool
+-- -- } deriving (Eq, Show)
 
-type BasePermissions = Bool
+-- type BasePermissions = Bool
 
-template Permissions
+-- template Permissions
+--   with
+--     owner : Party
+--     permissions : BasePermissions
+--   where
+--     signatory owner
+  
+--     controller owner can
+--       SetPermissions : ContractId Permissions
+--         with
+--           newPermissions : BasePermissions
+--         do
+--           create this with permissions = newPermissions
+
+template Authorization
   with
     owner : Party
-    permissions : BasePermissions
+    approved : Bool
   where
     signatory owner
-  
+    
     controller owner can
-      SetPermissions : ContractId Permissions
-        with
-          newPermissions : BasePermissions
+      nonconsuming Send_Authorization
+        : ContractId Authorization
         do
-          create this with permissions = newPermissions
+          create this with approved = False
 
+template AuthorizationProposal
+  with
+    sender : Party
+    receiver : Party
+    authorization : Authorization
+  where
+    signatory (signatory authorization)
 
-test_permissions = scenario do
+    controller receiver can
+      UserAuthorization_Accept
+        : ContractId Authorization
+        do
+          create authorization with
+            approved = True
+    
+    controller receiver can
+      UserAuthorization_Reject
+        : ContractId Authorization
+        do
+          create authorization
 
-  alice <- getParty "Alice"
-  auth <- do
-    return True
+    controller authorization.owner can
+      UserAuthorization_Cancel
+        : ContractId Authorization
+        do
+          create authorization
+
+-- test_permissions = scenario do
+
+--   alice <- getParty "Alice"
+--   auth <- do
+--     return True
   
-  -- let base = BasePermissions with authorization = auth
-  submit alice do
-    create Permissions with
-      owner = alice
-      permissions = auth
+--   -- let base = BasePermissions with authorization = auth
+--   submit alice do
+--     create Permissions with
+--       owner = alice
+--       permissions = auth
