@@ -8,6 +8,8 @@ template Authorization
     owner : Party
     -- approved : Map Party Bool
     approved : Bool
+    approvers : M.Map Party Bool
+    minimum : Int
   where
     signatory owner
     
@@ -18,6 +20,12 @@ template Authorization
         do
           -- let approvers = M.fromListWith (&& False) approvers
           assertMsg "Authorization requests must be false" (approved /= True)
+          create this
+    controller owner can
+      Complete_Authorization
+        : ContractId Authorization
+        do
+          let frequency m = sum $ map (\a -> 1) $ M.toList m
           create this
 
 template AuthorizationProposal
@@ -34,19 +42,22 @@ template AuthorizationProposal
         do
           assertMsg "sender and receiver cannot be the same party" (sender /= receiver)
           create authorization with
-            approved = True
+            approvers = M.insert receiver True authorization.approvers
+            -- approved = True
     
     controller receiver can
       UserAuthorization_Reject
         : ContractId Authorization
         do
-          create authorization
+          create authorization with
+            approvers = M.delete receiver authorization.approvers
 
     controller authorization.owner can
       UserAuthorization_Cancel
         : ContractId Authorization
         do
-          create authorization
+          create authorization with
+            approvers = M.delete receiver authorization.approvers
 
 test_auth = scenario do
   alice <- getParty "Alice"
