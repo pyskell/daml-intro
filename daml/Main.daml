@@ -11,16 +11,15 @@ template Authorization
     minimum : Int
   where
     signatory owner
+    -- ensure not approved
     
     controller owner can
       Send_Authorization
         : ContractId Authorization
         do
-          assertMsg "Authorization requests must be false" (approved /= True)
-
           create this
     controller owner can
-      Complete_Authorization
+      nonconsuming Complete_Authorization
         : ContractId Authorization
         do
           let frequency = length $ toList $ M.filter (==True) approvers
@@ -35,6 +34,7 @@ template AuthorizationProposal
     authorization : Authorization
   where
     signatory (signatory authorization)
+    ensure sender == authorization.owner -- Sender must be owner
 
     controller receiver can
       UserAuthorization_Accept
@@ -43,14 +43,12 @@ template AuthorizationProposal
           assertMsg "sender and receiver cannot be the same party" (sender /= receiver)
           create authorization with
             approvers = M.insert receiver True authorization.approvers
-            -- approved = True
     
     controller receiver can
       UserAuthorization_Reject
         : ContractId Authorization
         do
-          create authorization with
-            approvers = M.delete receiver authorization.approvers
+          create authorization
 
     controller authorization.owner can
       UserAuthorization_Cancel
@@ -62,40 +60,59 @@ template AuthorizationProposal
 test_auth = scenario do
   alice <- getParty "Alice"
   bob <- getParty "Bob"
+  carol <- getParty "Carol"
+  dave <- getParty "Dave"
 
-  authCid <- submit alice do
+  -- TODO: Make this fail
+  -- Alice can create a contract where some have already approved
+  -- You can see that known to and the approvers TextMap do not agree
+  submit alice do
     create Authorization with
       owner = alice
       approved = False
+      minimum = 2
+      approvers = M.fromList[(bob, False), (carol, True), (dave, False)]
 
-  -- Owners cannot send authorization requests that they approved themselves
-  bad_auth <- submit alice do
+  -- Alice can both be an owner and an approver
+  auth <- submit alice do
     create Authorization with
       owner = alice
-      approved = True
+      approved = False
+      minimum = 2
+      approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False)]
 
-  submitMustFail alice do
-    exercise bad_auth Send_Authorization
-
-  -- Alice cannot accept her own proposal
-  bad_proposal <- submit alice do
-    auth <- fetch authCid
-    create AuthorizationProposal with
-      sender = alice
-      receiver = alice
-      authorization = auth
-
-  submitMustFail alice do
-    exercise bad_proposal UserAuthorization_Accept
-    
-  -- Alice creates a valid auth proposal
-  auth_proposal <- submit alice do
-    auth <- fetch authCid
+  authPropBob <- submit alice do
+    auth_bob <- fetch auth
     create AuthorizationProposal with
       sender = alice
       receiver = bob
-      authorization = auth
+      authorization = auth_bob
 
-  -- Bob approves it
-  submit bob do
-    exercise auth_proposal UserAuthorization_Accept
+  -- Bob approves
+  authBobCid <- submit bob do
+    exercise authPropBob UserAuthorization_Accept
+
+  -- Alice doesn't have enough approvals
+  submitMustFail alice do
+    exercise authBobCid Complete_Authorization
+
+  -- Bob sends auth request to carol
+  authPropCarol <- submit alice do
+    auth_carol <- fetch authBobCid
+    create AuthorizationProposal with
+      sender = alice
+      receiver = carol
+      authorization = auth_carol
+
+  authCarolCid <- submit carol do
+    exercise authPropCarol UserAuthorization_Accept
+
+  submit alice do
+    exercise authCarolCid Complete_Authorization 
+
+  submit alice do
+    create Authorization with
+      owner = alice
+      approved = False
+      minimum = 2
+      approvers = M.fromList[(bob, False), (carol, False), (dave, False)]
