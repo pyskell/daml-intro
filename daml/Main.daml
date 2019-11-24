@@ -1,7 +1,6 @@
 daml 1.2
 
 module Main where
-import DA.Next.Map as M
 
 template Authorization
   with
