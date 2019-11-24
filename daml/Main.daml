@@ -65,7 +65,7 @@ test_auth = scenario do
     create Authorization with
       owner = alice
       approved = False
-      minimum = 2
+      minimum = 3
       approvers = M.fromList[(bob, False), (carol, True), (dave, False)]
 
   submit alice do archive bad_contract
@@ -75,7 +75,7 @@ test_auth = scenario do
     create Authorization with
       owner = alice
       approved = False
-      minimum = 2
+      minimum = 3
       approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False)]
 
   authPropBob <- submit alice do
@@ -93,7 +93,7 @@ test_auth = scenario do
   submitMustFail alice do
     exercise authBobCid Complete_Authorization
 
-  -- Bob sends auth request to carol
+  -- Alice forwards Bob's completed proposal to Carol
   authPropCarol <- submit alice do
     auth_carol <- fetch authBobCid
     create AuthorizationProposal with
@@ -104,12 +104,17 @@ test_auth = scenario do
   authCarolCid <- submit carol do
     exercise authPropCarol UserAuthorization_Accept
 
-  submit alice do
-    exercise authCarolCid Complete_Authorization 
+  -- Alice forward's Carol's completed proposal to Dave
+  authPropDave <- submit alice do
+    auth_dave <- fetch authCarolCid
+    create AuthorizationProposal with
+      sender = alice
+      receiver = dave
+      authorization = auth_dave
+  
+  authDaveCid <- submit dave do
+    exercise authPropDave UserAuthorization_Accept
 
-  -- submit alice do
-  --   create Authorization with
-  --     owner = alice
-  --     approved = False
-  --     minimum = 2
-  --     approvers = M.fromList[(bob, False), (carol, False), (dave, False)]
+  -- With enough Authorizations Alice can complete the multisig
+  submit alice do
+    exercise authDaveCid Complete_Authorization
