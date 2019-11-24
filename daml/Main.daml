@@ -14,9 +14,7 @@ template Authorization
     controller owner can
       Send_Authorization
         : ContractId Authorization
-          -- with approvers : [(Party, Bool)]
         do
-          -- let approvers = M.fromListWith (&& False) approvers
           assertMsg "Authorization requests must be false" (approved /= True)
           create this
 
