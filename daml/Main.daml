@@ -12,14 +12,9 @@ template Authorization
   where
     signatory owner
     -- ensure not approved
-    
+  
     controller owner can
-      Send_Authorization
-        : ContractId Authorization
-        do
-          create this
-    controller owner can
-      nonconsuming Complete_Authorization
+      Complete_Authorization
         : ContractId Authorization
         do
           let frequency = length $ toList $ M.filter (==True) approvers
@@ -66,12 +61,14 @@ test_auth = scenario do
   -- TODO: Make this fail
   -- Alice can create a contract where some have already approved
   -- You can see that known to and the approvers TextMap do not agree
-  submit alice do
+  bad_contract <- submit alice do
     create Authorization with
       owner = alice
       approved = False
       minimum = 2
       approvers = M.fromList[(bob, False), (carol, True), (dave, False)]
+
+  submit alice do archive bad_contract
 
   -- Alice can both be an owner and an approver
   auth <- submit alice do
@@ -110,9 +107,9 @@ test_auth = scenario do
   submit alice do
     exercise authCarolCid Complete_Authorization 
 
-  submit alice do
-    create Authorization with
-      owner = alice
-      approved = False
-      minimum = 2
-      approvers = M.fromList[(bob, False), (carol, False), (dave, False)]
+  -- submit alice do
+  --   create Authorization with
+  --     owner = alice
+  --     approved = False
+  --     minimum = 2
+  --     approvers = M.fromList[(bob, False), (carol, False), (dave, False)]

@@ -5,6 +5,8 @@ scenario: Main:setup
 parties:
   - Alice
   - Bob
+  - Carol
+  - Dave
 version: 0.0.1
 dependencies:
   - daml-prim
