@@ -6,7 +6,6 @@ import DA.Next.Map as M
 template Authorization
   with
     owner : Party
-    -- approved : Map Party Bool
     approved : Bool
     approvers : M.Map Party Bool
     minimum : Int
@@ -16,17 +15,18 @@ template Authorization
     controller owner can
       Send_Authorization
         : ContractId Authorization
-          -- with approvers : [(Party, Bool)]
         do
-          -- let approvers = M.fromListWith (&& False) approvers
           assertMsg "Authorization requests must be false" (approved /= True)
+
           create this
     controller owner can
       Complete_Authorization
         : ContractId Authorization
         do
-          let frequency m = sum $ map (\a -> 1) $ M.toList m
-          create this
+          let frequency = length $ toList $ M.filter (==True) approvers
+          assertMsg "Not enough approvals" (frequency >= minimum)
+          create this with
+            approved = True
 
 template AuthorizationProposal
   with
