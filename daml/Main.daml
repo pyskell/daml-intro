@@ -1,6 +1,8 @@
 daml 1.2
 
-module Main where
+module Main (
+  module Main
+  ) where
 import DA.Next.Map as M
 
 template Authorization
@@ -53,6 +55,7 @@ template AuthorizationProposal
             approvers = M.delete receiver authorization.approvers
 
 test_auth = scenario do
+
   alice <- getParty "Alice"
   bob <- getParty "Bob"
   carol <- getParty "Carol"
