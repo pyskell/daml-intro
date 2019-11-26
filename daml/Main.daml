@@ -10,8 +10,8 @@ template Authorization
     approvers : M.Map Party Bool
     minimum : Int
   where
+    -- let receivers = map fst $ toList $ M.filter (==False) approvers
     signatory owner
-    -- ensure not approved
   
     controller owner can
       Complete_Authorization
