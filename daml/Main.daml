@@ -1,21 +1,26 @@
 daml 1.2
 
 module Main where
+import DA.Next.Map as M
 
 template Authorization
   with
     owner : Party
-    -- approved : Map Party Bool
     approved : Bool
+    approvers : M.Map Party Bool
+    minimum : Int
   where
     signatory owner
-    
+    -- ensure not approved
+  
     controller owner can
-      Send_Authorization
+      Complete_Authorization
         : ContractId Authorization
         do
-          assertMsg "Authorization requests must be false" (approved /= True)
-          create this
+          let frequency = length $ toList $ M.filter (==True) approvers
+          assertMsg "Not enough approvals" (frequency >= minimum)
+          create this with
+            approved = True
 
 template AuthorizationProposal
   with
@@ -24,6 +29,7 @@ template AuthorizationProposal
     authorization : Authorization
   where
     signatory (signatory authorization)
+    ensure sender == authorization.owner -- Sender must be owner
 
     controller receiver can
       UserAuthorization_Accept
@@ -31,10 +37,10 @@ template AuthorizationProposal
         do
           assertMsg "sender and receiver cannot be the same party" (sender /= receiver)
           create authorization with
-            approved = True
+            approvers = M.insert receiver True authorization.approvers
     
     controller receiver can
-      UserAuthorization_Reject
+      nonconsuming UserAuthorization_Reject
         : ContractId Authorization
         do
           create authorization
@@ -43,45 +49,100 @@ template AuthorizationProposal
       UserAuthorization_Cancel
         : ContractId Authorization
         do
-          create authorization
+          create authorization with
+            approvers = M.delete receiver authorization.approvers
 
 test_auth = scenario do
   alice <- getParty "Alice"
   bob <- getParty "Bob"
+  carol <- getParty "Carol"
+  dave <- getParty "Dave"
+
+  -- TODO: Make this fail
+  -- Alice can create a contract where some have already approved
+  -- You can see that known to and the approvers TextMap do not agree
+  bad_contract <- submit alice do
+    create Authorization with
+      owner = alice
+      approved = False
+      minimum = 3
+      approvers = M.fromList[(bob, False), (carol, True), (dave, False)]
+
+  submit alice do archive bad_contract
+
+  -- Alice can both be an owner and an approver
+  auth <- submit alice do
+    create Authorization with
+      owner = alice
+      approved = False
+      minimum = 3
+      approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False)]
+
+  authPropBob <- submit alice do
+    auth_bob <- fetch auth
+    create AuthorizationProposal with
+      sender = alice
+      receiver = bob
+      authorization = auth_bob
+
+  -- Bob approves
+  authBobCid <- submit bob do
+    exercise authPropBob UserAuthorization_Accept
+
+  -- Alice doesn't have enough approvals
+  submitMustFail alice do
+    exercise authBobCid Complete_Authorization
+
+  -- Alice forwards Bob's completed proposal to Carol
+  authPropCarol <- submit alice do
+    auth_carol <- fetch authBobCid
+    create AuthorizationProposal with
+      sender = alice
+      receiver = carol
+      authorization = auth_carol
+
+  authCarolCid <- submit carol do
+    exercise authPropCarol UserAuthorization_Accept
+
+  -- Alice forward's Carol's completed proposal to Dave
+  authPropDave <- submit alice do
+    auth_dave <- fetch authCarolCid
+    create AuthorizationProposal with
+      sender = alice
+      receiver = dave
+      authorization = auth_dave
+  
+  authDaveCid <- submit dave do
+    exercise authPropDave UserAuthorization_Accept
+
+  -- With enough Authorizations Alice can complete the multisig
+  submit alice do
+    exercise authDaveCid Complete_Authorization
+
+test_reject_cancel = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+  carol <- getParty "Carol"
 
   authCid <- submit alice do
     create Authorization with
       owner = alice
       approved = False
+      minimum = 2
+      approvers = M.fromList[(bob, False), (carol, False)]
 
-  -- Owners cannot send authorization requests that they approved themselves
-  bad_auth <- submit alice do
-    create Authorization with
-      owner = alice
-      approved = True
-
-  submitMustFail alice do
-    exercise bad_auth Send_Authorization
-
-  -- Alice cannot accept her own proposal
-  bad_proposal <- submit alice do
-    auth <- fetch authCid
-    create AuthorizationProposal with
-      sender = alice
-      receiver = alice
-      authorization = auth
-
-  submitMustFail alice do
-    exercise bad_proposal UserAuthorization_Accept
-    
-  -- Alice creates a valid auth proposal
-  auth_proposal <- submit alice do
+  authProposal <- submit alice do
     auth <- fetch authCid
     create AuthorizationProposal with
       sender = alice
       receiver = bob
       authorization = auth
-
-  -- Bob approves it
+  
   submit bob do
-    exercise auth_proposal UserAuthorization_Accept
+    exercise authProposal UserAuthorization_Reject
+
+  submit alice do
+    exercise authProposal UserAuthorization_Cancel
+
+  submitMustFail bob do
+    exercise authProposal UserAuthorization_Accept
