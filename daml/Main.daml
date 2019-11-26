@@ -76,7 +76,7 @@ test_auth = scenario do
       owner = alice
       approved = False
       minimum = 3
-      approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False), (elaine, False)]
+      approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False)]
 
   authPropBob <- submit alice do
     auth_bob <- fetch auth
@@ -128,7 +128,7 @@ test_reject = scenario do
     create Authorization with
       owner = alice
       approved = False
-      minimum = 2
+      minimum = 1
       approvers = M.fromList[(bob, False), (carol, False)]
 
   authProposal <- submit alice do
