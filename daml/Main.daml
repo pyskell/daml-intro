@@ -76,7 +76,7 @@ test_auth = scenario do
       owner = alice
       approved = False
       minimum = 3
-      approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False)]
+      approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False), (elaine, False)]
 
   authPropBob <- submit alice do
     auth_bob <- fetch auth
@@ -118,3 +118,25 @@ test_auth = scenario do
   -- With enough Authorizations Alice can complete the multisig
   submit alice do
     exercise authDaveCid Complete_Authorization
+
+test_reject = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+  carol <- getParty "Carol"
+
+  authCid <- submit alice do
+    create Authorization with
+      owner = alice
+      approved = False
+      minimum = 2
+      approvers = M.fromList[(bob, False), (carol, False)]
+
+  authProposal <- submit alice do
+    auth <- fetch authCid
+    create AuthorizationProposal with
+      sender = alice
+      receiver = bob
+      authorization = auth
+  
+  submit bob do
+    exercise authProposal UserAuthorization_Reject
