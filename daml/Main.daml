@@ -10,12 +10,9 @@ template AuthorizationPlaceholder
     signers : [Party]
     minimum : Int
   where
-    -- let receivers = map fst $ toList $ M.filter (==False) approvers
     signatory signers
     ensure
       unique signers
-
-    -- ensure not approved
 
 template PendingAuthorization
   with
@@ -63,25 +60,55 @@ template PendingAuthorization
     --         approvers = M.delete receiver authorization.approvers
 
 test_auth = scenario do
-  -- alice <- getParty "Alice"
-  -- bob <- getParty "Bob"
-  -- carol <- getParty "Carol"
-  -- dave <- getParty "Dave"
 
   parties@[alice, bob, carol, dave] <- mapA getParty ["Alice", "Bob", "Carol", "Dave"]
 
-  authCid <- submit alice do
-    create AuthorizationPlaceholder with
-      signers = parties
-      minimum = 3
+  let auth = AuthorizationPlaceholder with signers = parties, minimum = 3
 
   -- Alice cannot create a contract where some have already approved
   submitMustFail alice do
-    auth <- fetch authCid
     create PendingAuthorization with
       authorization = auth
       signedBy = [alice, bob, carol]
       rejectedBy = [dave]
+
+  -- Alice cannot both sign and reject a contract
+  submitMustFail alice do
+    create PendingAuthorization with
+      authorization = auth
+      signedBy = [alice]
+      rejectedBy = [alice]
+
+  pendingAuth <- submit alice do
+    create PendingAuthorization with
+      authorization = auth
+      signedBy = [alice]
+      rejectedBy = []
+  
+  pendingAuth <- submit bob do
+    exercise pendingAuth Authorization_Sign with signer = bob
+  
+  -- Bob cannot sign for someone else
+  submitMustFail bob do
+    exercise pendingAuth Authorization_Sign with signer = carol
+  
+  -- Alice cannot complete a contract that does not >= minimum signatures
+  submitMustFail alice do
+    exercise pendingAuth Authorization_Complete with signer = alice
+
+  -- Carol can reject the authorization
+  pendingAuth <- submit carol do
+    exercise pendingAuth Authorization_Reject with signer = carol
+
+  -- But she cannot sign later
+  submitMustFail carol do
+    exercise pendingAuth Authorization_Sign with signer = carol
+  
+  pendingAuth <- submit dave do
+    exercise pendingAuth Authorization_Sign with signer = dave
+
+  submit dave do
+    exercise pendingAuth Authorization_Complete with signer = dave
 
   -- submit alice do archive bad_contract
 
