@@ -3,59 +3,70 @@ daml 1.2
 module Main (
   module Main
   ) where
-import DA.Next.Map as M
+import DA.List
+-- import DA.Next.Map as M
 
-template Authorization
+template AuthorizationPlaceholder
   with
-    owner : Party
-    approved : Bool
-    approvers : M.Map Party Bool
+    owners : [Party]
     minimum : Int
+    -- approved : Bool
+    -- approvers : M.Map Party Bool
   where
     -- let receivers = map fst $ toList $ M.filter (==False) approvers
-    signatory owner
+    signatory owners
+    ensure
+      unique owners
+
+    -- ensure not approved
   
-    controller owner can
-      Complete_Authorization
-        : ContractId Authorization
-        do
-          let frequency = length $ toList $ M.filter (==True) approvers
-          assertMsg "Not enough approvals" (frequency >= minimum)
-          create this with
-            approved = True
+    -- controller owner can
+    --   Complete_Authorization
+    --     : ContractId Authorization
+    --     do
+    --       let frequency = length $ toList $ M.filter (==True) approvers
+    --       assertMsg "Not enough approvals" (frequency >= minimum)
+    --       create this with
+    --         approved = True
 
-template AuthorizationProposal
+template PendingAuthorization
   with
-    sender : Party
-    receiver : Party
-    authorization : Authorization
+    authorization : AuthorizationPlaceholder
+    signedBy : [Party]
+    rejectedBy : [Party]
   where
-    signatory (signatory authorization)
-    ensure sender == authorization.owner -- Sender must be owner
+    signatory signedBy
+    observer authorization.owners
+    ensure unique signedBy ++ rejectedBy
 
-    controller receiver can
-      UserAuthorization_Accept
-        : ContractId Authorization
+    let remaining = authorization.owners \\ signedBy
+
+    choice Authorization_Sign : ContractId PendingAuthorization with
+        signer : Party
+
+      controller signer
         do
-          assertMsg "sender and receiver cannot be the same party" (sender /= receiver)
-          create authorization with
-            approvers = M.insert receiver True authorization.approvers
+          assert elem signer remaining
+          create this with
+            signedBy = signer :: signedBy
     
-    controller receiver can
-      nonconsuming UserAuthorization_Reject
-        : ContractId Authorization
+    choice Authorization_Reject : ContractId PendingAuthorization with
+        signer : Party
+      
+      controller signer
         do
-          create authorization
+          assert elem signer remaining
+          create this with
+            rejectedBy = signer :: rejectedBy
 
-    controller authorization.owner can
-      UserAuthorization_Cancel
-        : ContractId Authorization
-        do
-          create authorization with
-            approvers = M.delete receiver authorization.approvers
+    -- controller authorization.owner can
+    --   UserAuthorization_Cancel
+    --     : ContractId Authorization
+    --     do
+    --       create authorization with
+    --         approvers = M.delete receiver authorization.approvers
 
 test_auth = scenario do
-
   alice <- getParty "Alice"
   bob <- getParty "Bob"
   carol <- getParty "Carol"
@@ -81,71 +92,49 @@ test_auth = scenario do
       minimum = 3
       approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False)]
 
-  authPropBob <- submit alice do
-    auth_bob <- fetch auth
+  authProp <- submit alice do
+    -- auth_bob <- fetch auth
     create AuthorizationProposal with
       sender = alice
-      receiver = bob
-      authorization = auth_bob
+      receivers = [alice, bob, carol, dave]
+      authorization = auth
 
   -- Bob approves
-  authBobCid <- submit bob do
-    exercise authPropBob UserAuthorization_Accept
+  submit bob do
+    exercise authProp UserAuthorization_Accept
 
   -- Alice doesn't have enough approvals
   submitMustFail alice do
-    exercise authBobCid Complete_Authorization
+    exercise auth Complete_Authorization
 
-  -- Alice forwards Bob's completed proposal to Carol
-  authPropCarol <- submit alice do
-    auth_carol <- fetch authBobCid
-    create AuthorizationProposal with
-      sender = alice
-      receiver = carol
-      authorization = auth_carol
-
-  authCarolCid <- submit carol do
-    exercise authPropCarol UserAuthorization_Accept
-
-  -- Alice forward's Carol's completed proposal to Dave
-  authPropDave <- submit alice do
-    auth_dave <- fetch authCarolCid
-    create AuthorizationProposal with
-      sender = alice
-      receiver = dave
-      authorization = auth_dave
-  
-  authDaveCid <- submit dave do
-    exercise authPropDave UserAuthorization_Accept
-
-  -- With enough Authorizations Alice can complete the multisig
-  submit alice do
-    exercise authDaveCid Complete_Authorization
-
-test_reject_cancel = scenario do
-  alice <- getParty "Alice"
-  bob <- getParty "Bob"
-  carol <- getParty "Carol"
-
-  authCid <- submit alice do
-    create Authorization with
-      owner = alice
-      approved = False
-      minimum = 2
-      approvers = M.fromList[(bob, False), (carol, False)]
-
-  authProposal <- submit alice do
-    auth <- fetch authCid
-    create AuthorizationProposal with
-      sender = alice
-      receiver = bob
-      authorization = auth
-  
-  submit bob do
-    exercise authProposal UserAuthorization_Reject
+  submit carol do
+    exercise authProp UserAuthorization_Accept
 
   submit alice do
-    exercise authProposal UserAuthorization_Cancel
+    exercise auth Complete_Authorization
 
-  submitMustFail bob do
-    exercise authProposal UserAuthorization_Accept
+  -- -- Alice forwards Bob's completed proposal to Carol
+  -- authPropCarol <- submit alice do
+  --   auth_carol <- fetch authBobCid
+  --   create AuthorizationProposal with
+  --     sender = alice
+  --     receiver = carol
+  --     authorization = auth_carol
+
+  -- authCarolCid <- submit carol do
+  --   exercise authPropCarol UserAuthorization_Accept
+
+  -- -- Alice forward's Carol's completed proposal to Dave
+  -- authPropDave <- submit alice do
+  --   auth_dave <- fetch authCarolCid
+  --   create AuthorizationProposal with
+  --     sender = alice
+  --     receiver = dave
+  --     authorization = auth_dave
+  
+  -- authDaveCid <- submit dave do
+  --   exercise authPropDave UserAuthorization_Accept
+
+  -- -- With enough Authorizations Alice can complete the multisig
+  -- submit alice do
+  --   exercise authDaveCid Complete_Authorization
