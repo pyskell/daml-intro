@@ -52,20 +52,13 @@ template PendingAuthorization
           assertMsg "Not enough approvals" (length signedBy >= authorization.minimum)
           create authorization
 
-    -- controller authorization.owner can
-    --   UserAuthorization_Cancel
-    --     : ContractId Authorization
-    --     do
-    --       create authorization with
-    --         approvers = M.delete receiver authorization.approvers
-
 test_auth = scenario do
 
   parties@[alice, bob, carol, dave] <- mapA getParty ["Alice", "Bob", "Carol", "Dave"]
 
   let auth = AuthorizationPlaceholder with signers = parties, minimum = 3
 
-  -- Alice cannot create a contract where some have already approved
+  -- Alice cannot create a contract where some have already signed/rejected
   submitMustFail alice do
     create PendingAuthorization with
       authorization = auth
