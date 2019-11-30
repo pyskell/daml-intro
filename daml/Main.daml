@@ -4,30 +4,18 @@ module Main (
   module Main
   ) where
 import DA.List
--- import DA.Next.Map as M
 
 template AuthorizationPlaceholder
   with
-    owners : [Party]
+    signers : [Party]
     minimum : Int
-    -- approved : Bool
-    -- approvers : M.Map Party Bool
   where
     -- let receivers = map fst $ toList $ M.filter (==False) approvers
-    signatory owners
+    signatory signers
     ensure
-      unique owners
+      unique signers
 
     -- ensure not approved
-  
-    -- controller owner can
-    --   Complete_Authorization
-    --     : ContractId Authorization
-    --     do
-    --       let frequency = length $ toList $ M.filter (==True) approvers
-    --       assertMsg "Not enough approvals" (frequency >= minimum)
-    --       create this with
-    --         approved = True
 
 template PendingAuthorization
   with
@@ -36,17 +24,17 @@ template PendingAuthorization
     rejectedBy : [Party]
   where
     signatory signedBy
-    observer authorization.owners
-    ensure unique signedBy ++ rejectedBy
+    observer authorization.signers
+    ensure unique $ signedBy ++ rejectedBy
 
-    let remaining = authorization.owners \\ signedBy
+    let remaining = authorization.signers \\ (signedBy ++ rejectedBy)
 
     choice Authorization_Sign : ContractId PendingAuthorization with
         signer : Party
 
       controller signer
         do
-          assert elem signer remaining
+          assert $ elem signer remaining
           create this with
             signedBy = signer :: signedBy
     
@@ -55,9 +43,17 @@ template PendingAuthorization
       
       controller signer
         do
-          assert elem signer remaining
+          assert $ elem signer remaining
           create this with
             rejectedBy = signer :: rejectedBy
+    
+    choice Authorization_Complete : ContractId AuthorizationPlaceholder with
+        signer : Party
+
+      controller signer
+        do
+          assertMsg "Not enough approvals" (length signedBy >= authorization.minimum)
+          create authorization
 
     -- controller authorization.owner can
     --   UserAuthorization_Cancel
@@ -67,51 +63,56 @@ template PendingAuthorization
     --         approvers = M.delete receiver authorization.approvers
 
 test_auth = scenario do
-  alice <- getParty "Alice"
-  bob <- getParty "Bob"
-  carol <- getParty "Carol"
-  dave <- getParty "Dave"
+  -- alice <- getParty "Alice"
+  -- bob <- getParty "Bob"
+  -- carol <- getParty "Carol"
+  -- dave <- getParty "Dave"
 
-  -- TODO: Make this fail
-  -- Alice can create a contract where some have already approved
-  -- You can see that known to and the approvers TextMap do not agree
-  bad_contract <- submit alice do
-    create Authorization with
-      owner = alice
-      approved = False
+  parties@[alice, bob, carol, dave] <- mapA getParty ["Alice", "Bob", "Carol", "Dave"]
+
+  authCid <- submit alice do
+    create AuthorizationPlaceholder with
+      signers = parties
       minimum = 3
-      approvers = M.fromList[(bob, False), (carol, True), (dave, False)]
 
-  submit alice do archive bad_contract
-
-  -- Alice can both be an owner and an approver
-  auth <- submit alice do
-    create Authorization with
-      owner = alice
-      approved = False
-      minimum = 3
-      approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False)]
-
-  authProp <- submit alice do
-    -- auth_bob <- fetch auth
-    create AuthorizationProposal with
-      sender = alice
-      receivers = [alice, bob, carol, dave]
-      authorization = auth
-
-  -- Bob approves
-  submit bob do
-    exercise authProp UserAuthorization_Accept
-
-  -- Alice doesn't have enough approvals
+  -- Alice cannot create a contract where some have already approved
   submitMustFail alice do
-    exercise auth Complete_Authorization
+    auth <- fetch authCid
+    create PendingAuthorization with
+      authorization = auth
+      signedBy = [alice, bob, carol]
+      rejectedBy = [dave]
 
-  submit carol do
-    exercise authProp UserAuthorization_Accept
+  -- submit alice do archive bad_contract
 
-  submit alice do
-    exercise auth Complete_Authorization
+  -- -- Alice can both be an owner and an approver
+  -- auth <- submit alice do
+  --   create Authorization with
+  --     owner = alice
+  --     approved = False
+  --     minimum = 3
+  --     approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False)]
+
+  -- authProp <- submit alice do
+  --   -- auth_bob <- fetch auth
+  --   create AuthorizationProposal with
+  --     sender = alice
+  --     receivers = [alice, bob, carol, dave]
+  --     authorization = auth
+
+  -- -- Bob approves
+  -- submit bob do
+  --   exercise authProp UserAuthorization_Accept
+
+  -- -- Alice doesn't have enough approvals
+  -- submitMustFail alice do
+  --   exercise auth Complete_Authorization
+
+  -- submit carol do
+  --   exercise authProp UserAuthorization_Accept
+
+  -- submit alice do
+  --   exercise auth Complete_Authorization
 
   -- -- Alice forwards Bob's completed proposal to Carol
   -- authPropCarol <- submit alice do
