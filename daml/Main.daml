@@ -20,7 +20,7 @@ template PendingAuthorization
     signedBy : [Party]
     rejectedBy : [Party]
   where
-    signatory signedBy
+    signatory signedBy ++ rejectedBy
     observer authorization.signers
     ensure unique $ signedBy ++ rejectedBy
 
@@ -107,62 +107,6 @@ test_auth = scenario do
   pendingAuth <- submit dave do
     exercise pendingAuth Authorization_Sign with signer = dave
 
+  -- With enough signers Dave (or anyone) can complete the authorization
   submit dave do
     exercise pendingAuth Authorization_Complete with signer = dave
-
-  -- submit alice do archive bad_contract
-
-  -- -- Alice can both be an owner and an approver
-  -- auth <- submit alice do
-  --   create Authorization with
-  --     owner = alice
-  --     approved = False
-  --     minimum = 3
-  --     approvers = M.fromList[(alice, False), (bob, False), (carol, False), (dave, False)]
-
-  -- authProp <- submit alice do
-  --   -- auth_bob <- fetch auth
-  --   create AuthorizationProposal with
-  --     sender = alice
-  --     receivers = [alice, bob, carol, dave]
-  --     authorization = auth
-
-  -- -- Bob approves
-  -- submit bob do
-  --   exercise authProp UserAuthorization_Accept
-
-  -- -- Alice doesn't have enough approvals
-  -- submitMustFail alice do
-  --   exercise auth Complete_Authorization
-
-  -- submit carol do
-  --   exercise authProp UserAuthorization_Accept
-
-  -- submit alice do
-  --   exercise auth Complete_Authorization
-
-  -- -- Alice forwards Bob's completed proposal to Carol
-  -- authPropCarol <- submit alice do
-  --   auth_carol <- fetch authBobCid
-  --   create AuthorizationProposal with
-  --     sender = alice
-  --     receiver = carol
-  --     authorization = auth_carol
-
-  -- authCarolCid <- submit carol do
-  --   exercise authPropCarol UserAuthorization_Accept
-
-  -- -- Alice forward's Carol's completed proposal to Dave
-  -- authPropDave <- submit alice do
-  --   auth_dave <- fetch authCarolCid
-  --   create AuthorizationProposal with
-  --     sender = alice
-  --     receiver = dave
-  --     authorization = auth_dave
-  
-  -- authDaveCid <- submit dave do
-  --   exercise authPropDave UserAuthorization_Accept
-
-  -- -- With enough Authorizations Alice can complete the multisig
-  -- submit alice do
-  --   exercise authDaveCid Complete_Authorization
