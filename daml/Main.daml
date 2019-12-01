@@ -12,24 +12,19 @@ template AuthorizationPlaceholder
     signers : [Party]
     minimum : Int
   where
-    signatory signers
-    observer provider
+    signatory provider
+    observer signers
     ensure
-      unique signers
-
-    controller provider can
-      nonconsuming Do_Action : Bool
-        do
-          -- Provider can put whatever side effects/business logic they want here
-          return True
+      unique (signers ++ [provider]) -- A provider cannot be a signer
 
 template PendingAuthorization
   with
+    provider : Party
     authorization : AuthorizationPlaceholder
     signedBy : [Party]
     rejectedBy : [Party]
   where
-    signatory signedBy ++ rejectedBy
+    signatory signedBy ++ rejectedBy ++ [authorization.provider]
     observer authorization.signers
     ensure unique $ signedBy ++ rejectedBy
 
@@ -58,10 +53,8 @@ template PendingAuthorization
             rejectedBy = signer :: rejectedBy
             authorization = auth
     
-    choice Authorization_Complete : ContractId AuthorizationPlaceholder with
-        signer : Party
-
-      controller signer
+    choice Authorization_Complete : ContractId AuthorizationPlaceholder 
+      controller provider
         do
           assertMsg "Not enough approvals" (length signedBy >= authorization.minimum)
           create authorization
@@ -70,40 +63,20 @@ template PendingAuthorization
   -- domain name controlled by her DNS Provider
   -- This change requires the approval of at least 3 of 4 participants
   -- within her organization.
-  -- To do this she creates a series of contracts that will:
-  -- Coordinate the signing of the contract (PendingAuthorization)
-  -- Create the action she wants to perform (AuthorizationPlaceholder)
-  -- Once completed the Provider can perform Do_Action on the AuthorizationPlaceholder to finish the authorization process. The successful exercise of this action signals to the provider that the rules of the pre-agreed AuthorizationPlaceholder were followed
+  -- To do this the Provider creates a PendingAuthorization which contains the AuthorizationPlaceholder and waits for the signers to approve it
+
+  -- The provider has previously negotiated the PendingAuthorization with Alices team
 test_auth = scenario do
 
   parties@[alice, bob, carol, dave] <- mapA getParty ["Alice", "Bob", "Carol", "Dave"]
-
-  -- The provider has previously negotiated the AuthorizationPlaceholder
-  -- with Alice's team and provides them with this placeholder when they
-  -- want to make a DNS change.
   provider <- getParty "Provider"
+
   let auth = AuthorizationPlaceholder with signers = parties, minimum = 3, provider
 
-  -- Alice cannot replace the provider with her own and pass off a fake AuthorizationPlaceholder
-  fakeProvider <- getParty "FakeProvider"
-  let badAuth = AuthorizationPlaceholder with signers = [alice], minimum = 1, provider = fakeProvider
-
-  badAuth <- submit alice do
-    create PendingAuthorization with
-      authorization = badAuth
-      signedBy = [alice]
-      rejectedBy = []
-
-  badCompletedAuth <- submit alice do
-    exercise badAuth Authorization_Complete with signer = alice
-
-  -- The provider cannot perform Do_Action on the bad contract as they are not aware of it
+  -- Providers cannot create a contract where some have already signed/rejected
   submitMustFail provider do
-    exercise badCompletedAuth Do_Action
-
-  -- Alice cannot create a contract where some have already signed/rejected
-  submitMustFail alice do
     create PendingAuthorization with
+      provider
       authorization = auth
       signedBy = [alice, bob, carol]
       rejectedBy = [dave]
@@ -111,15 +84,39 @@ test_auth = scenario do
   -- Alice cannot both sign and reject a contract
   submitMustFail alice do
     create PendingAuthorization with
+      provider
       authorization = auth
       signedBy = [alice]
       rejectedBy = [alice]
 
-  pendingAuth <- submit alice do
+  -- Provider creates the contract
+  pendingAuth <- submit provider do
     create PendingAuthorization with
+      provider
       authorization = auth
-      signedBy = [alice]
+      signedBy = []
       rejectedBy = []
+
+  -- Alice cannot replace the provider with her own and pass off a fake AuthorizationPlaceholder
+  fakeProvider <- getParty "FakeProvider"
+  let badAuth = AuthorizationPlaceholder with signers = [alice], minimum = 1, provider = fakeProvider
+
+  -- FakeProviders cannot masquerade as the real entity
+  badAuth <- submit fakeProvider do
+    create PendingAuthorization with
+      provider = fakeProvider
+      authorization = badAuth
+      signedBy = []
+      rejectedBy = []
+
+  completedAuth <- submit alice do
+    exercise badAuth Authorization_Sign with signer = alice
+
+  submitMustFail provider do
+    exercise completedAuth Authorization_Complete
+
+  pendingAuth <- submit alice do
+    exercise pendingAuth Authorization_Sign with signer = alice
   
   pendingAuth <- submit bob do
     exercise pendingAuth Authorization_Sign with signer = bob
@@ -128,9 +125,9 @@ test_auth = scenario do
   submitMustFail bob do
     exercise pendingAuth Authorization_Sign with signer = carol
   
-  -- Alice cannot complete a contract that does not >= minimum signatures
-  submitMustFail alice do
-    exercise pendingAuth Authorization_Complete with signer = alice
+  -- Provider cannot complete a contract that does not >= minimum signatures
+  submitMustFail provider do
+    exercise pendingAuth Authorization_Complete
 
   -- Carol can reject the authorization
   pendingAuth <- submit carol do
@@ -143,14 +140,6 @@ test_auth = scenario do
   pendingAuth <- submit dave do
     exercise pendingAuth Authorization_Sign with signer = dave
 
-  -- With enough signers Dave (or anyone) can complete the authorization
-  completedAuth <- submit dave do
-    exercise pendingAuth Authorization_Complete with signer = dave
-
-  -- With the authorization completed the Provider can perform the action
-  -- They described in the AuthorizationPlaceholder
-
-  action <- submit provider do
-    exercise completedAuth Do_Action
-
-  assert action
+  -- With enough signers the Provider can complete the authorization
+  submit provider do
+    exercise pendingAuth Authorization_Complete
