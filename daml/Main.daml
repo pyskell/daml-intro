@@ -4,15 +4,24 @@ module Main (
   module Main
   ) where
 import DA.List
+import Prelude hiding (Action)
 
 template AuthorizationPlaceholder
   with
+    provider : Party
     signers : [Party]
     minimum : Int
   where
     signatory signers
+    observer provider
     ensure
       unique signers
+
+    controller provider can
+      nonconsuming Do_Action : Bool
+        do
+          -- Provider can put whatever side effects/business logic they want here
+          return True
 
 template PendingAuthorization
   with
@@ -57,11 +66,40 @@ template PendingAuthorization
           assertMsg "Not enough approvals" (length signedBy >= authorization.minimum)
           create authorization
 
+  -- Alice wants to modify the DNS records of a very critical 
+  -- domain name controlled by her DNS Provider
+  -- This change requires the approval of at least 3 of 4 participants
+  -- within her organization.
+  -- To do this she creates a series of contracts that will:
+  -- Coordinate the signing of the contract (PendingAuthorization)
+  -- Create the action she wants to perform (AuthorizationPlaceholder)
+  -- Once completed the Provider can perform Do_Action on the AuthorizationPlaceholder to finish the authorization process. The successful exercise of this action signals to the provider that the rules of the pre-agreed AuthorizationPlaceholder were followed
 test_auth = scenario do
 
   parties@[alice, bob, carol, dave] <- mapA getParty ["Alice", "Bob", "Carol", "Dave"]
 
-  let auth = AuthorizationPlaceholder with signers = parties, minimum = 3
+  -- The provider has previously negotiated the AuthorizationPlaceholder
+  -- with Alice's team and provides them with this placeholder when they
+  -- want to make a DNS change.
+  provider <- getParty "Provider"
+  let auth = AuthorizationPlaceholder with signers = parties, minimum = 3, provider
+
+  -- Alice cannot replace the provider with her own and pass off a fake AuthorizationPlaceholder
+  fakeProvider <- getParty "FakeProvider"
+  let badAuth = AuthorizationPlaceholder with signers = [alice], minimum = 1, provider = fakeProvider
+
+  badAuth <- submit alice do
+    create PendingAuthorization with
+      authorization = badAuth
+      signedBy = [alice]
+      rejectedBy = []
+
+  badCompletedAuth <- submit alice do
+    exercise badAuth Authorization_Complete with signer = alice
+
+  -- The provider cannot perform Do_Action on the bad contract as they are not aware of it
+  submitMustFail provider do
+    exercise badCompletedAuth Do_Action
 
   -- Alice cannot create a contract where some have already signed/rejected
   submitMustFail alice do
@@ -106,5 +144,13 @@ test_auth = scenario do
     exercise pendingAuth Authorization_Sign with signer = dave
 
   -- With enough signers Dave (or anyone) can complete the authorization
-  submit dave do
+  completedAuth <- submit dave do
     exercise pendingAuth Authorization_Complete with signer = dave
+
+  -- With the authorization completed the Provider can perform the action
+  -- They described in the AuthorizationPlaceholder
+
+  action <- submit provider do
+    exercise completedAuth Do_Action
+
+  assert action
