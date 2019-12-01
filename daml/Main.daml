@@ -41,8 +41,13 @@ template PendingAuthorization
       controller signer
         do
           assert $ elem signer remaining
+          -- If a party rejects the contract they remove themselves from the signers
+          let signers = delete signer authorization.signers
+          let auth = authorization with signers
+
           create this with
             rejectedBy = signer :: rejectedBy
+            authorization = auth
     
     choice Authorization_Complete : ContractId AuthorizationPlaceholder with
         signer : Party
