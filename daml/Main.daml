@@ -38,30 +38,6 @@ template PendingAuthorization
     ensure unique $ authorization.provider :: signedBy ++ rejectedBy
 
     let remaining = authorization.signers \\ signedBy ++ rejectedBy
-
-    -- choice Authorization_Sign : ContractId PendingAuthorization with
-    --     signer : Party
-
-    --   controller signer
-    --     do
-    --       assert $ elem signer remaining
-    --       create this with
-    --         signedBy = signer :: signedBy
-    
-    -- choice Authorization_Reject : ContractId PendingAuthorization with
-    --     signer : Party
-      
-    --   controller signer
-    --     do
-    --       assert $ elem signer remaining
-    --       -- Remove rejecters from AuthorizationPlaceholder so that
-    --       -- the completed authorization only contains those who accepted
-    --       let signers = delete signer authorization.signers
-    --       let auth = authorization with signers
-
-    --       create this with
-    --         rejectedBy = signer :: rejectedBy
-    --         authorization = auth
     
     choice Authorization_Bulk : ContractId PendingAuthorization with
         signatures : [PartyAuth]
