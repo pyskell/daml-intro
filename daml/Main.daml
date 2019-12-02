@@ -177,6 +177,25 @@ test_auth = scenario do
     exercise pendingAuth Authorization_Bulk with
       signatures
 
+  -- Provider cannot submit PartyAuths that don't match the PendingAuthorization
+  pendingAuth2 <- submit provider do
+    create PendingAuthorization with
+      provider
+      authorization
+      signedBy = []
+      rejectedBy = []
+
+  nonMatchingAuth <- submit alice do
+    create PartyAuth with 
+      pendingAuth = pendingAuth2
+      provider
+      signer = alice
+      decision = True
+
+  submitMustFail provider do
+    signatures <- mapA fetch [nonMatchingAuth, bobAuth, carolAuth, daveAuth]
+    exercise pendingAuth Authorization_Bulk with signatures
+
   -- With enough signers the Provider can complete the authorization
   submit provider do
     signatures <- mapA fetch [aliceAuth, bobAuth, carolAuth, daveAuth]
