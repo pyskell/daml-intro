@@ -24,11 +24,13 @@ template PendingAuthorization
     signedBy : [Party]
     rejectedBy : [Party]
   where
-    signatory authorization.provider :: signedBy ++ rejectedBy
-    observer authorization.signers
-    ensure unique $ authorization.provider :: signedBy ++ rejectedBy
+    let 
+      signatories = authorization.provider :: signedBy ++ rejectedBy
+      remaining = authorization.signers \\ signedBy ++ rejectedBy
 
-    let remaining = authorization.signers \\ signedBy ++ rejectedBy
+    signatory signatories
+    observer authorization.signers
+    ensure unique $ signatories
 
     choice Authorization_Sign : ContractId PendingAuthorization with
         signer : Party
