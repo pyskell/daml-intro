@@ -1,3 +1,4 @@
+-- TODO: Write tests that test all assertions in Authorization_Bulk
 daml 1.2
 
 module Main (
@@ -33,23 +34,24 @@ template PendingAuthorization
     signedBy : [Party]
     rejectedBy : [Party]
   where
-    signatory authorization.provider :: signedBy ++ rejectedBy
+    signatory authorization.provider
     observer authorization.signers
     ensure unique $ authorization.provider :: signedBy ++ rejectedBy
 
-    let remaining = authorization.signers \\ signedBy ++ rejectedBy
-    
+    let 
+      remaining = authorization.signers \\ signedBy ++ rejectedBy
+      getSigner x = x.signer
+      signerInList s lst = (getSigner s) `elem` lst
+
     choice Authorization_Bulk : ContractId PendingAuthorization with
         signatures : [PartyAuth]
       controller provider
         do
           -- Make sure the array of signatures can sign
-          let getSigner x = x.signer
-          let inRemaining x = (getSigner x) `elem` remaining 
-          assert $ all inRemaining signatures
+          assertMsg "Invalid signature(s) provided." $ all (`signerInList` remaining) signatures
           -- Make sure this is the correct contract being signed for
           let correctContract x = x.pendingAuth == self
-          assert $ all correctContract signatures
+          assertMsg "PartyAuth does not match this contract" $ all correctContract signatures
 
           let getDecision x = x.decision
           let bulkSigned = map getSigner $ filter getDecision signatures
@@ -61,10 +63,11 @@ template PendingAuthorization
             signedBy = bulkSigned ++ signedBy
             rejectedBy = bulkRejected ++ rejectedBy
 
-    choice Authorization_Complete : ContractId AuthorizationPlaceholder 
+    choice Authorization_Complete : ContractId AuthorizationPlaceholder
       controller provider
         do
           assertMsg "Not enough approvals" (length signedBy >= authorization.minimum)
+          assertMsg "Signature(s) are not members of the authorization" $ all (`elem` signedBy) authorization.signers
           create authorization
 
   -- Alice wants to modify the DNS records of a very critical 
@@ -84,12 +87,15 @@ test_auth = scenario do
   let authorization = AuthorizationPlaceholder with signers = parties, minimum = 3, provider
 
   -- Providers cannot create a contract where some have already signed/rejected
-  submitMustFail provider do
+  badAuth <- submit provider do
     create PendingAuthorization with
       provider
       authorization
       signedBy = [alice, bob, carol]
       rejectedBy = [dave]
+
+  submitMustFail provider do
+    exercise badAuth Authorization_Complete
 
   -- Alice cannot both sign and reject a contract
   submitMustFail alice do
