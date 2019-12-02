@@ -4,7 +4,16 @@ module Main (
   module Main
   ) where
 import DA.List
-import Prelude hiding (Action)
+
+template PartyAuth
+  with
+    pendingAuth : ContractId PendingAuthorization
+    provider : Party
+    signer : Party
+    decision : Bool
+  where
+    signatory signer
+    observer provider
 
 template AuthorizationPlaceholder
   with
@@ -30,30 +39,52 @@ template PendingAuthorization
 
     let remaining = authorization.signers \\ signedBy ++ rejectedBy
 
-    choice Authorization_Sign : ContractId PendingAuthorization with
-        signer : Party
+    -- choice Authorization_Sign : ContractId PendingAuthorization with
+    --     signer : Party
 
-      controller signer
-        do
-          assert $ elem signer remaining
-          create this with
-            signedBy = signer :: signedBy
+    --   controller signer
+    --     do
+    --       assert $ elem signer remaining
+    --       create this with
+    --         signedBy = signer :: signedBy
     
-    choice Authorization_Reject : ContractId PendingAuthorization with
-        signer : Party
+    -- choice Authorization_Reject : ContractId PendingAuthorization with
+    --     signer : Party
       
-      controller signer
-        do
-          assert $ elem signer remaining
-          -- Remove rejecters from AuthorizationPlaceholder so that
-          -- the completed authorization only contains those who accepted
-          let signers = delete signer authorization.signers
-          let auth = authorization with signers
+    --   controller signer
+    --     do
+    --       assert $ elem signer remaining
+    --       -- Remove rejecters from AuthorizationPlaceholder so that
+    --       -- the completed authorization only contains those who accepted
+    --       let signers = delete signer authorization.signers
+    --       let auth = authorization with signers
 
-          create this with
-            rejectedBy = signer :: rejectedBy
-            authorization = auth
+    --       create this with
+    --         rejectedBy = signer :: rejectedBy
+    --         authorization = auth
     
+    choice Authorization_Bulk : ContractId PendingAuthorization with
+        signatures : [PartyAuth]
+      controller provider
+        do
+          -- Make sure the array of signatures can sign
+          let getSigner x = x.signer
+          let inRemaining x = (getSigner x) `elem` remaining 
+          assert $ all inRemaining signatures
+          -- Make sure this is the correct contract being signed for
+          let correctContract x = x.pendingAuth == self
+          assert $ all correctContract signatures
+
+          let getDecision x = x.decision
+          let bulkSigned = map getSigner $ filter getDecision signatures
+          let bulkRejected = map getSigner $ filter (not . getDecision) signatures
+
+          -- This non-interactive version differs from the interactive version
+          -- because it cannot control for changing approvals
+          create this with
+            signedBy = bulkSigned ++ signedBy
+            rejectedBy = bulkRejected ++ rejectedBy
+
     choice Authorization_Complete : ContractId AuthorizationPlaceholder 
       controller provider
         do
@@ -108,59 +139,78 @@ test_auth = scenario do
       signedBy = []
       rejectedBy = []
 
-  pendingAuth <- submit alice do
-    exercise pendingAuth Authorization_Sign with signer = alice
+  aliceAuth <- submit alice do
+    create PartyAuth with 
+      pendingAuth
+      provider
+      signer = alice
+      decision = True
   
-  pendingAuth <- submit bob do
-    exercise pendingAuth Authorization_Sign with signer = bob
+  bobAuth <- submit bob do
+    create PartyAuth with 
+      pendingAuth
+      provider
+      signer = bob
+      decision = True
   
   -- Bob cannot sign for someone else
   submitMustFail bob do
-    exercise pendingAuth Authorization_Sign with signer = carol
+    create PartyAuth with 
+      pendingAuth
+      provider
+      signer = carol
+      decision = True
   
   -- Provider cannot complete a contract that does not >= minimum signatures
   submitMustFail provider do
     exercise pendingAuth Authorization_Complete
 
   -- Carol can reject the authorization
-  pendingAuth <- submit carol do
-    exercise pendingAuth Authorization_Reject with signer = carol
-
-  -- But she cannot sign later
-  submitMustFail carol do
-    exercise pendingAuth Authorization_Sign with signer = carol
+  carolAuth <- submit carol do
+    create PartyAuth with 
+      pendingAuth
+      provider
+      signer = carol
+      decision = False
   
-  pendingAuth <- submit dave do
-    exercise pendingAuth Authorization_Sign with signer = dave
+  daveAuth <- submit dave do
+    create PartyAuth with 
+      pendingAuth
+      provider
+      signer = dave
+      decision = True
 
   -- With enough signers the Provider can complete the authorization
   submit provider do
-    pendingAuth <- exercise pendingAuth Authorization_Complete
-    archive pendingAuth
+    signatures <- mapA fetch [aliceAuth, bobAuth, carolAuth, daveAuth]
+    pendingAuth <- exercise pendingAuth Authorization_Bulk with
+      signatures
+    exercise pendingAuth Authorization_Complete
+    -- archive pendingAuth
 
-fake_provider = scenario do
-  alice <- getParty "Alice"
-  fakeProvider <- getParty "FakeProvider"
-  provider <- getParty "Provider"
+-- fake_provider = scenario do
+--   alice <- getParty "Alice"
+--   fakeProvider <- getParty "FakeProvider"
+--   provider <- getParty "Provider"
 
-  -- Alice cannot replace the provider with her own and pass off a fake AuthorizationPlaceholder to the service provider
-  let authorization = AuthorizationPlaceholder with signers = [alice], minimum = 1, provider = fakeProvider
+--   -- Alice cannot replace the provider with her own and pass off a fake AuthorizationPlaceholder to the service provider
+--   let authorization = AuthorizationPlaceholder with signers = [alice], minimum = 1, provider = fakeProvider
 
-  -- FakeProviders cannot masquerade as the real entity
-  badAuth <- submit fakeProvider do
-    create PendingAuthorization with
-      provider = fakeProvider
-      authorization
-      signedBy = []
-      rejectedBy = []
+--   -- FakeProviders cannot masquerade as the real entity
+--   badAuth <- submit fakeProvider do
+--     create PendingAuthorization with
+--       provider = fakeProvider
+--       authorization
+--       signedBy = []
+--       rejectedBy = []
 
-  badAuth <- submit alice do
-    exercise badAuth Authorization_Sign with signer = alice
+--   badAuth <- submit alice do
+--     exercise badAuth Authorization_Sign with signer = alice
 
-  -- Provider is unaware of the badAuth contract
-  submitMustFail provider do
-    exercise badAuth Authorization_Complete
+--   -- Provider is unaware of the badAuth contract
+--   submitMustFail provider do
+--     exercise badAuth Authorization_Complete
 
-  submit fakeProvider do
-    badAuth <- exercise badAuth Authorization_Complete
-    archive badAuth
+--   submit fakeProvider do
+--     badAuth <- exercise badAuth Authorization_Complete
+--     archive badAuth
