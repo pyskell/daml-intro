@@ -40,22 +40,22 @@ template PendingAuthorization
 
     let 
       remaining = authorization.signers \\ signedBy ++ rejectedBy
-      getSigner x = x.signer
-      signerInList s lst = (getSigner s) `elem` lst
+      getPartySigner x = x.signer
 
     choice Authorization_Bulk : ContractId PendingAuthorization with
         signatures : [PartyAuth]
       controller provider
         do
+          let isRemaining s = (getPartySigner s) `elem` remaining
           -- Make sure the array of signatures can sign
-          assertMsg "Invalid signature(s) provided." $ all (`signerInList` remaining) signatures
+          assertMsg "Invalid signature(s) provided." $ all isRemaining signatures
           -- Make sure this is the correct contract being signed for
           let correctContract x = x.pendingAuth == self
           assertMsg "PartyAuth does not match this contract" $ all correctContract signatures
 
           let getDecision x = x.decision
-          let bulkSigned = map getSigner $ filter getDecision signatures
-          let bulkRejected = map getSigner $ filter (not . getDecision) signatures
+          let bulkSigned = map getPartySigner $ filter getDecision signatures
+          let bulkRejected = map getPartySigner $ filter (not . getDecision) signatures
 
           -- This non-interactive version differs from the interactive version
           -- because it cannot control for changing approvals
@@ -162,6 +162,20 @@ test_auth = scenario do
       provider
       signer = dave
       decision = True
+
+  -- Provider cannot submit PartyAuths from non-signatories
+  emily <- getParty "Emily"
+  emilyAuth <- submit emily do
+    create PartyAuth with 
+      pendingAuth
+      provider
+      signer = emily
+      decision = True
+
+  submitMustFail provider do
+    signatures <- mapA fetch [aliceAuth, bobAuth, carolAuth, daveAuth, emilyAuth]
+    exercise pendingAuth Authorization_Bulk with
+      signatures
 
   -- With enough signers the Provider can complete the authorization
   submit provider do
