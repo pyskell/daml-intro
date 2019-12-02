@@ -15,7 +15,7 @@ template AuthorizationPlaceholder
     signatory provider
     observer signers
     ensure
-      unique (signers ++ [provider]) -- A provider cannot be a signer
+      unique $ provider :: signers
 
 template PendingAuthorization
   with
@@ -24,11 +24,11 @@ template PendingAuthorization
     signedBy : [Party]
     rejectedBy : [Party]
   where
-    signatory signedBy ++ rejectedBy ++ [authorization.provider]
+    signatory authorization.provider :: signedBy ++ rejectedBy
     observer authorization.signers
-    ensure unique $ signedBy ++ rejectedBy
+    ensure unique $ authorization.provider :: signedBy ++ rejectedBy
 
-    let remaining = authorization.signers \\ (signedBy ++ rejectedBy)
+    let remaining = authorization.signers \\ signedBy ++ rejectedBy
 
     choice Authorization_Sign : ContractId PendingAuthorization with
         signer : Party
@@ -45,7 +45,8 @@ template PendingAuthorization
       controller signer
         do
           assert $ elem signer remaining
-          -- If a party rejects the contract they remove themselves from the signers
+          -- Remove rejecters from AuthorizationPlaceholder so that
+          -- the completed authorization only contains those who accepted
           let signers = delete signer authorization.signers
           let auth = authorization with signers
 
@@ -61,23 +62,25 @@ template PendingAuthorization
 
   -- Alice wants to modify the DNS records of a very critical 
   -- domain name controlled by her DNS Provider
-  -- This change requires the approval of at least 3 of 4 participants
-  -- within her organization.
-  -- To do this the Provider creates a PendingAuthorization which contains the AuthorizationPlaceholder and waits for the signers to approve it
+  -- This change requires the approval of at least 3 of 4 participants within her organization (Alice, Bob, Carol, and Dave).
+  -- To do this the Provider creates a PendingAuthorization which contains 
+  -- the AuthorizationPlaceholder and waits for the signers to approve it
+  -- If they do approve it the DNS Provider will
 
   -- The provider has previously negotiated the PendingAuthorization with Alices team
+  -- and provides them with the same contract each time they want to make a DNS change
 test_auth = scenario do
 
   parties@[alice, bob, carol, dave] <- mapA getParty ["Alice", "Bob", "Carol", "Dave"]
   provider <- getParty "Provider"
 
-  let auth = AuthorizationPlaceholder with signers = parties, minimum = 3, provider
+  let authorization = AuthorizationPlaceholder with signers = parties, minimum = 3, provider
 
   -- Providers cannot create a contract where some have already signed/rejected
   submitMustFail provider do
     create PendingAuthorization with
       provider
-      authorization = auth
+      authorization
       signedBy = [alice, bob, carol]
       rejectedBy = [dave]
 
@@ -85,35 +88,25 @@ test_auth = scenario do
   submitMustFail alice do
     create PendingAuthorization with
       provider
-      authorization = auth
+      authorization
       signedBy = [alice]
       rejectedBy = [alice]
+
+  -- A provider cannot be a signer
+  submitMustFail provider do
+    create PendingAuthorization with
+      provider
+      authorization
+      signedBy = [provider]
+      rejectedBy = []
 
   -- Provider creates the contract
   pendingAuth <- submit provider do
     create PendingAuthorization with
       provider
-      authorization = auth
+      authorization
       signedBy = []
       rejectedBy = []
-
-  -- Alice cannot replace the provider with her own and pass off a fake AuthorizationPlaceholder
-  fakeProvider <- getParty "FakeProvider"
-  let badAuth = AuthorizationPlaceholder with signers = [alice], minimum = 1, provider = fakeProvider
-
-  -- FakeProviders cannot masquerade as the real entity
-  badAuth <- submit fakeProvider do
-    create PendingAuthorization with
-      provider = fakeProvider
-      authorization = badAuth
-      signedBy = []
-      rejectedBy = []
-
-  completedAuth <- submit alice do
-    exercise badAuth Authorization_Sign with signer = alice
-
-  submitMustFail provider do
-    exercise completedAuth Authorization_Complete
 
   pendingAuth <- submit alice do
     exercise pendingAuth Authorization_Sign with signer = alice
@@ -142,4 +135,32 @@ test_auth = scenario do
 
   -- With enough signers the Provider can complete the authorization
   submit provider do
-    exercise pendingAuth Authorization_Complete
+    pendingAuth <- exercise pendingAuth Authorization_Complete
+    archive pendingAuth
+
+fake_provider = scenario do
+  alice <- getParty "Alice"
+  fakeProvider <- getParty "FakeProvider"
+  provider <- getParty "Provider"
+
+  -- Alice cannot replace the provider with her own and pass off a fake AuthorizationPlaceholder to the service provider
+  let authorization = AuthorizationPlaceholder with signers = [alice], minimum = 1, provider = fakeProvider
+
+  -- FakeProviders cannot masquerade as the real entity
+  badAuth <- submit fakeProvider do
+    create PendingAuthorization with
+      provider = fakeProvider
+      authorization
+      signedBy = []
+      rejectedBy = []
+
+  badAuth <- submit alice do
+    exercise badAuth Authorization_Sign with signer = alice
+
+  -- Provider is unaware of the badAuth contract
+  submitMustFail provider do
+    exercise badAuth Authorization_Complete
+
+  submit fakeProvider do
+    badAuth <- exercise badAuth Authorization_Complete
+    archive badAuth
