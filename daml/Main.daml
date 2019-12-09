@@ -5,7 +5,9 @@ module Main (
   module Main
   ) where
 import DA.List
+import DA.Foldable hiding (elem, all, length)
 
+-- TODO: Could I not instantiate PartyAuths and instead pass them around like AuthorizationPlaceholder?
 template PartyAuth
   with
     pendingAuth : ContractId PendingAuthorization
@@ -57,11 +59,13 @@ template PendingAuthorization
           let bulkSigned = map getPartySigner $ filter getDecision signatures
           let bulkRejected = map getPartySigner $ filter (not . getDecision) signatures
 
+          -- mapA_ (\x -> create x with signer = x.signer) signatures
           -- This non-interactive version differs from the interactive version
           -- because it cannot control for changing approvals
           create this with
             signedBy = bulkSigned ++ signedBy
             rejectedBy = bulkRejected ++ rejectedBy
+
 
     choice Authorization_Complete : ContractId AuthorizationPlaceholder
       controller provider
@@ -202,6 +206,14 @@ test_auth = scenario do
     pendingAuth <- exercise pendingAuth Authorization_Bulk with
       signatures
     exercise pendingAuth Authorization_Complete
+  
+  -- TODO: Improve this workflow
+  submit alice do archive aliceAuth
+  submit alice do archive nonMatchingAuth
+  submit bob do archive bobAuth
+  submit carol do archive carolAuth
+  submit dave do archive daveAuth
+  submit emily do archive emilyAuth
     -- archive pendingAuth
 
 -- fake_provider = scenario do
